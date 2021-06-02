@@ -1,0 +1,44 @@
+# FROM tensorflow/tensorflow:2.2.0
+# FROM nvcr.io/nvidia/tensorflow:20.09-tf2-py3
+FROM nvcr.io/nvidia/tensorflow:20.08-tf1-py3
+ARG DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's/archive.ubuntu.com/free.nchc.org.tw/g' /etc/apt/sources.list
+RUN apt-get update && apt-get install -y \
+    git \
+    gpg-agent \
+    python3-cairocffi \
+    protobuf-compiler \
+    python3-pil \
+    python3-lxml \
+    python3-tk \
+    wget \
+    openssh-server \
+    screen
+
+RUN mkdir /var/run/sshd
+RUN echo 'root:abc123' | chpasswd
+RUN mkdir /root/tensorflow
+WORKDIR /root/tensorflow
+COPY  ../models /root/tensorflow/models
+
+RUN (cd /root/tensorflow/models/research/ && protoc object_detection/protos/*.proto --python_out=.)
+WORKDIR /root/tensorflow/models/research/
+
+RUN cp object_detection/packages/tf1/setup.py ./
+ENV PATH="/root/tensorflow/.local/bin:${PATH}"
+
+RUN python -m pip install -U pip
+RUN python -m pip install .
+
+ENV TF_CPP_MIN_LOG_LEVEL 3
+
+
+
+RUN sed -i 's/#*PermitRootLogin prohibit-password/PermitRootLogin yes/g' /etc/ssh/sshd_config
+# SSH login fix. Otherwise user is kicked off after login
+RUN sed -i 's@session\s*required\s*pam_loginuid.so@session optional pam_loginuid.so@g' /etc/pam.d/sshd
+
+ENV NOTVISIBLE="in users profile"
+RUN echo "export VISIBLE=now" >> /etc/profile
+EXPOSE 22
+ENTRYPOINT service ssh restart && bash
